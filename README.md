@@ -4,9 +4,9 @@ Supported products:
  - SQL Server Database Engine
  - SQL Server Reporting Services
 
-They will work with certificates autorenewed via Active Directory Certificate Services if you use the Certificate Template name of 'SQL Server' and 'Internal Web Server' respectively (to use other names, update the script!)
+You can use the script to perform certificate autorenewal, but also to configure both of these services for the 'first time' if you supply just the -NewCertHash parameter. As provided, the deployment script, and this feature, both depend on the certificate being created via Active Directory Certificate Services using specified Certificate Template names. The script uses template names of 'SQL Server' and 'Internal Web Server' respectively by default (update the script with your names!).
 
-If you are using a third-party Certificate Authority e.g. Let's Encrypt you can still use the Certificate Services Lifecycle Notifications feature
+If you are using a third-party Certificate Authority e.g. Let's Encrypt you can still use the Certificate Services Lifecycle Notifications feature.
 
 To use, review and download both files .ps1 files to a folder, then run Deploy-CertificateRenewalTasks.ps1
 
