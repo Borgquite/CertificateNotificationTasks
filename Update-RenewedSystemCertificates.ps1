@@ -133,3 +133,4 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
             }
         }
     }
+}
