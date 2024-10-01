@@ -1,6 +1,6 @@
 # Based on https://social.technet.microsoft.com/wiki/contents/articles/14250.certificate-services-lifecycle-notifications.aspx
 # Update any certificates used by the relevant services - will be passed $OldCertHash, $NewCertHash and $EventRecordId
-# Passing only NewCertHash will install the relevant certificate for Microsoft SQL Server Database Engine instances
+# Passing only NewCertHash will install the relevant certificate for Microsoft SQL Server Database Engine and Reporting Services instances
 
 Param(
     [String]$OldCertHash,
