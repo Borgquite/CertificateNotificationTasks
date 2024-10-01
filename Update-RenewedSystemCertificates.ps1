@@ -129,7 +129,7 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
                 }
                 # Restart SQL Server Reporting Services instance
                 Write-Output "Restarting SQL Server Reporting Services 'SQLServerReportingServices'..."
-                Restart-Service -Name 'SQLServerReportingServices' -Force
+                Restart-Service -Name 'SQLServerReportingServices' -Force -WarningAction:SilentlyContinue # Suppress 'Waiting for service to start' warnings
             }
         }
     }
