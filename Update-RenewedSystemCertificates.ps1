@@ -15,29 +15,32 @@ $NewCertificate = Get-Item -Path Cert:\LocalMachine\My\$NewCertHash
 
 # If there is an old certificate to renew, or the new certificate template information shows it is an SQL Server certificate - prevent the incorrect certificate template from being selected when passing NewCertHash only
 if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=SQL Server\(" })) {
-    # Look for any Microsoft SQL Server Database Engine instances without any certificate configured, or with the old certificate thumbprint
-    foreach ($SuperSocketNetLibKey in Get-Item -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL*\MSSQLSERVER\SuperSocketNetLib" | Where-Object { $_.GetValue('Certificate') -eq $OldCertHash }) { # Based on https://learn.microsoft.com/en-us/sql/database-engine/configure-windows/configure-sql-server-encryption?view=sql-server-ver16
-        # Get the instance name, service name and account of this SQL Server - based on https://dba.stackexchange.com/questions/56045/any-relation-between-sql-server-service-name-and-instance-name
-        $SQLServerRegKey = Get-Item ($SuperSocketNetLibKey | Split-Path | Split-Path)
-        $SQLServerInstanceName = $SQLServerRegKey.GetValue($null) # SQL Server registry key default value is instance name
-        $SQLServiceName = @('MSSQLSERVER', $("MSSQL`$$SQLServerInstanceName"))[!($SQLServerInstanceName -eq 'MSSQLSERVER')]
-        $SQLServiceObject = Get-CimInstance -ClassName Win32_Service -Filter "Name='$SQLServiceName'" -Property StartName
-
-        # Set permissions on the private key for certificate - based on https://blog.wicktech.net/update-sql-ssl-certs/
-        Write-Output "Setting ACL on SQL Server Certificate Thumbprint '$NewCertHash' for SQL Server instance '$SQLServerInstanceName' running as '$($SQLServiceObject.StartName)'..."
-        $NewCertificatePrivateKeyPath = "$env:ALLUSERSPROFILE\Microsoft\Crypto\RSA\MachineKeys\$($NewCertificate.PrivateKey.CspKeyContainerInfo.UniqueKeyContainerName)"
-        $NewCertificatePrivateKeyAcl = Get-Acl -Path $NewCertificatePrivateKeyPath
-        $NewCertificatePrivateKeyAccessRule = New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList $SQLServiceObject.StartName, 'Read', 'Allow'
-        $NewCertificatePrivateKeyAcl.AddAccessRule($NewCertificatePrivateKeyAccessRule)
-        Set-Acl -Path $NewCertificatePrivateKeyPath -AclObject $NewCertificatePrivateKeyAcl
-
-        # Update the certificate thumbprint with this certificate on this SQL Server and restart - for SQL Server 2019, must be in lower case https://stackoverflow.com/a/74285913
-        Write-Output "Updating Certificate Thumbprint for SQL Server instance '$SQLServerInstanceName' to '$($NewCertHash.ToLower())'..."
-        $SuperSocketNetLibKey | Set-ItemProperty -Name "Certificate" -Value $NewCertHash.ToLower()
-
-        # Restart the SQL Server instance
-        Write-Output "Restarting SQL Server instance '$SQLServerInstanceName'..."
-        Restart-Service -Name $SQLServiceName -Force -WarningAction:SilentlyContinue # Suppress 'Waiting for service to start' warnings
+    # If there is an instance of the Microsoft SQL Server registry key
+    if (Test-Path -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server" -PathType Container) {
+        # Look for any Microsoft SQL Server Database Engine instances without any certificate configured, or with the old certificate thumbprint
+        foreach ($SuperSocketNetLibKey in Get-Item -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL*\MSSQLSERVER\SuperSocketNetLib" | Where-Object { $_.GetValue('Certificate') -eq $OldCertHash }) { # Based on https://learn.microsoft.com/en-us/sql/database-engine/configure-windows/configure-sql-server-encryption?view=sql-server-ver16
+            # Get the instance name, service name and account of this SQL Server - based on https://dba.stackexchange.com/questions/56045/any-relation-between-sql-server-service-name-and-instance-name
+            $SQLServerRegKey = Get-Item ($SuperSocketNetLibKey | Split-Path | Split-Path)
+            $SQLServerInstanceName = $SQLServerRegKey.GetValue($null) # SQL Server registry key default value is instance name
+            $SQLServiceName = @('MSSQLSERVER', $("MSSQL`$$SQLServerInstanceName"))[!($SQLServerInstanceName -eq 'MSSQLSERVER')]
+            $SQLServiceObject = Get-CimInstance -ClassName Win32_Service -Filter "Name='$SQLServiceName'" -Property StartName
+    
+            # Set permissions on the private key for certificate - based on https://blog.wicktech.net/update-sql-ssl-certs/
+            Write-Output "Setting ACL on SQL Server Certificate Thumbprint '$NewCertHash' for SQL Server instance '$SQLServerInstanceName' running as '$($SQLServiceObject.StartName)'..."
+            $NewCertificatePrivateKeyPath = "$env:ALLUSERSPROFILE\Microsoft\Crypto\RSA\MachineKeys\$($NewCertificate.PrivateKey.CspKeyContainerInfo.UniqueKeyContainerName)"
+            $NewCertificatePrivateKeyAcl = Get-Acl -Path $NewCertificatePrivateKeyPath
+            $NewCertificatePrivateKeyAccessRule = New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList $SQLServiceObject.StartName, 'Read', 'Allow'
+            $NewCertificatePrivateKeyAcl.AddAccessRule($NewCertificatePrivateKeyAccessRule)
+            Set-Acl -Path $NewCertificatePrivateKeyPath -AclObject $NewCertificatePrivateKeyAcl
+    
+            # Update the certificate thumbprint with this certificate on this SQL Server and restart - for SQL Server 2019, must be in lower case https://stackoverflow.com/a/74285913
+            Write-Output "Updating Certificate Thumbprint for SQL Server instance '$SQLServerInstanceName' to '$($NewCertHash.ToLower())'..."
+            $SuperSocketNetLibKey | Set-ItemProperty -Name "Certificate" -Value $NewCertHash.ToLower()
+    
+            # Restart the SQL Server instance
+            Write-Output "Restarting SQL Server instance '$SQLServerInstanceName'..."
+            Restart-Service -Name $SQLServiceName -Force -WarningAction:SilentlyContinue # Suppress 'Waiting for service to start' warnings
+        }
     }
 }
 # If there is an old certificate to renew, or the new certificate template information shows it is an Internal Web Server certificate - prevent the incorrect certificate template from being selected when passing NewCertHash only
