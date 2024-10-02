@@ -3,8 +3,14 @@ These scripts allow the use of Windows 8+ and Windows Server 2012+ Certificate S
 Supported products:
  - SQL Server Database Engine
  - SQL Server Reporting Services
+ - Network Device Enrollment Service (NDES)
 
-You can use the script to perform certificate autorenewal, but also to configure both of these services for the 'first time' if you supply just the -NewCertHash parameter. As provided, the deployment script, and this feature, both depend on the certificate being created via Active Directory Certificate Services using specified Certificate Template names. The script uses template names of 'SQL Server' and 'Internal Web Server' respectively by default (update the script with your names!).
+You can use the script to perform certificate autorenewal, and also for SQL Server, configuring components for using a certificate for the 'first time' with just the -NewCertHash parameter.
+
+Some script functionality depends on certificates being enrolled via Active Directory Certificate Services with specific certificate template names.
+ - For SQL Server, the script uses template names of 'SQL Server' and 'Internal Web Server' respectively by default. This is not required when renewing certificates, but will be if you want to configure the 'first time' using the -NewCertHash parameter as described above.
+ - For Network Device Enrollment Service, the default template names for the 'CEPEncryption' and 'EnrollmentAgentOffline' V1 certificate templates are supported - but you can also set up custom names using V2 certificates if you replaced the defaults e.g. by following https://www.microsoft.com/en-us/download/details.aspx?id=46406
+If you are using Active Directory Certificate Services, ensure you update the scripts with the certificate template names you are using.
 
 If you are using a third-party Certificate Authority e.g. Let's Encrypt you can still use the Certificate Services Lifecycle Notifications feature.
 
