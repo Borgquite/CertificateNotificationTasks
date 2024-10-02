@@ -99,7 +99,7 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
                 # Add the bindings for the Web Service URL (ReportServerWebService) third, then add the bindings for the Web Portal URL (ReportServerWebApp) fourth
                 foreach ($SQLServerRSApplication in 'ReportServerWebService', 'ReportServerWebApp') {
                     # Reserve each HTTPS URL of the Subject Alternate Name(s) of the new certificate
-                    foreach ($NewCertificateDNSSubjectAlternateName in $NewCertificate.Extensions.Where({$_.Oid.Value -eq '2.5.29.17'}).Format(1) -split [System.Environment]::NewLine | Where-Object { $_ -match "^DNS Name=" }) {
+                    foreach ($NewCertificateDNSSubjectAlternateName in $NewCertificate.Extensions.Where({ $_.Oid.Value -eq '2.5.29.17' }).Format(1) -split [System.Environment]::NewLine | Where-Object { $_ -match "^DNS Name=" }) {
                         # Generate the HTTPS URL based on the Subject Alternate Name, followed by the port of the previous reserved HTTPS URL
                         $NewSQLServerRSUrlString = "https://$($NewCertificateDNSSubjectAlternateName -replace "^DNS Name="):$((($SQLServerRSReservedURLs.UrlString | ForEach-Object { $i=0 } { $_ | Where-Object { $SQLServerRSReservedURLs.Application[$i] -eq $SQLServerRSApplication -and $_ -match '^https://.+:\d+$' }; $i++ }) -split ':')[-1])"
                         Write-Output "Adding reserved URL for SQL Server Reporting Services '$SQLServerRSApplication': '$NewSQLServerRSUrlString'..."
