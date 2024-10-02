@@ -137,3 +137,23 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
         }
     }
 }
+# If the new certificate template information shows it is a CEP Encryption or Exchange Enrollment Agent (Offline request) V1 certificate, or is a custom V2 certificate template name - based on https://www.microsoft.com/en-us/download/details.aspx?id=46406
+if ($NewCertificate.Extensions | Where-Object { ($_.Oid.Value -eq '1.3.6.1.4.1.311.20.2' -and $_.Format(0) -eq "CEPEncryption") -or `
+    ($_.Oid.Value -eq '1.3.6.1.4.1.311.20.2' -and $_.Format(0) -eq "EnrollmentAgentOffline") -or `
+    ($_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=NDES CEP Encryption\(") -or `
+    ($_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=NDES Exchange Enrollment Agent \(Offline Request\)\(") }) {
+    # If there is an instance of Network Device Enrollment Services installed
+    if (Test-Path -Path "$env:SystemRoot\System32\certsrv\mscep\mscep.dll" -PathType Leaf) {
+        $NDESIISAppPoolName = 'SCEP' # The NDES service installs an IIS Application Pool is called 'SCEP' by default
+        # Refresh IISAdministration view of the IIS Server Manager - refreshes worker process data
+        Reset-IISServerManager -Confirm:$false
+        # If there is a running NDES IIS Worker Process
+        if ((Get-IISAppPool -Name $NDESIISAppPoolName).WorkerProcesses) {
+            # If the worker process start time is before the certificate was issued - taking ClockSkewMinutes default value (10 minutes) into account for ADCS
+            if ((Get-Process -Id ((Get-IISAppPool -Name $NDESIISAppPoolName).WorkerProcesses).ProcessId).StartTime -lt $NewCertificate.NotBefore.AddMinutes(10)) {
+                Write-Output "Restarting Network Device Enrollment Services IIS Worker Process '$NDESIISAppPoolName'..."
+                Restart-WebAppPool -Name $NDESIISAppPoolName
+            }
+        }
+    }
+}
