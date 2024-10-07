@@ -60,7 +60,7 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
 
             # If either reporting services application has no existing reserved HTTPS URLs, or certificate bindings, add dummy data using default settings
             foreach ($SQLServerRSApplication in 'ReportServerWebService', 'ReportServerWebApp') {
-                if (($SQLServerRSReservedURLs.UrlString | ForEach-Object { $i=0 } { $_ | Where-Object { $SQLServerRSReservedURLs.Application[$i] -eq $SQLServerRSApplication -and $_ -match '^https://.+:\d+$' }; $i++ }).Count -le 0) {
+                if (($SQLServerRSReservedURLs.UrlString | ForEach-Object { $i=0 } { $_ | Where-Object { $SQLServerRSReservedURLs.Application[$i] -eq $SQLServerRSApplication -and $_ -match '^https://.*:\d+$' }; $i++ }).Count -le 0) {
                     $SQLServerRSReservedURLs.Application += $SQLServerRSApplication
                     $SQLServerRSReservedURLs.UrlString += 'https://+:443'
                 }
@@ -80,7 +80,7 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
                 foreach ($SQLServerRSApplication in 'ReportServerWebApp', 'ReportServerWebService') {
                     # Remove any existing reserved HTTPS URLs for this application
                     for ($i = 0; $i -lt $SQLServerRSReservedURLs.Application.Count; $i++) {
-                        if ($SQLServerRSReservedURLs.Application[$i] -eq $SQLServerRSApplication -and $SQLServerRSReservedURLs.UrlString[$i] -match '^https://.+:\d+$' -and $SQLServerRSReservedURLs.UrlString[$i] -ne 'https://+:443') { # Include check for dummy data added just to configure a new certificate
+                        if ($SQLServerRSReservedURLs.Application[$i] -eq $SQLServerRSApplication -and $SQLServerRSReservedURLs.UrlString[$i] -match '^https://.*:\d+$' -and $SQLServerRSReservedURLs.UrlString[$i] -ne 'https://+:443') { # Include check for dummy data added just to configure a new certificate
                             Write-Output "Removing reserved URL for SQL Server Reporting Services '$SQLServerRSApplication': '$($SQLServerRSReservedURLs.UrlString[$i])'..."
                             $SQLRemoveWMIMethodResult = $SQLServerRSConfigurationSetting | Invoke-CimMethod -MethodName RemoveURL -Arguments @{Application=$SQLServerRSApplication;UrlString=$SQLServerRSReservedURLs.UrlString[$i];Lcid=$SystemLocale.LCID}
                             if ($SQLRemoveWMIMethodResult.HRESULT -ne 0) {
@@ -104,7 +104,7 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
                     # Reserve each HTTPS URL of the Subject Alternate Name(s) of the new certificate
                     foreach ($NewCertificateDNSSubjectAlternateName in $NewCertificate.Extensions.Where({ $_.Oid.Value -eq '2.5.29.17' }).Format(1) -split [System.Environment]::NewLine | Where-Object { $_ -match "^DNS Name=" }) {
                         # Generate the HTTPS URL based on the Subject Alternate Name, followed by the port of the previous reserved HTTPS URL
-                        $NewSQLServerRSUrlString = "https://$($NewCertificateDNSSubjectAlternateName -replace "^DNS Name="):$((($SQLServerRSReservedURLs.UrlString | ForEach-Object { $i=0 } { $_ | Where-Object { $SQLServerRSReservedURLs.Application[$i] -eq $SQLServerRSApplication -and $_ -match '^https://.+:\d+$' }; $i++ }) -split ':')[-1])"
+                        $NewSQLServerRSUrlString = "https://$($NewCertificateDNSSubjectAlternateName -replace "^DNS Name="):$((($SQLServerRSReservedURLs.UrlString | ForEach-Object { $i=0 } { $_ | Where-Object { $SQLServerRSReservedURLs.Application[$i] -eq $SQLServerRSApplication -and $_ -match '^https://.*:\d+$' }; $i++ }) -split ':')[-1])"
                         Write-Output "Adding reserved URL for SQL Server Reporting Services '$SQLServerRSApplication': '$NewSQLServerRSUrlString'..."
                         $SQLCreateWMIMethodResult = $SQLServerRSConfigurationSetting | Invoke-CimMethod -MethodName ReserveURL -Arguments @{Application=$SQLServerRSApplication;UrlString=$NewSQLServerRSUrlString;Lcid=$SystemLocale.LCID}
                         if ($SQLCreateWMIMethodResult.HRESULT -ne 0) {
