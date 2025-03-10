@@ -10,7 +10,7 @@ You can use the script to perform certificate autorenewal, and also for SQL Serv
 
 Some script functionality depends on certificates being enrolled via Active Directory Certificate Services with specific certificate template names.
  - For SQL Server, the script uses template names of 'SQL Server' and 'Internal Web Server' respectively by default. This is not required when renewing certificates, but will be if you want to configure the 'first time' using the -NewCertHash parameter as described above.
- - For Hyper-V Replica, the script uses a template name of 'Hyper-V Replica' by default. In theory, this check can be removed.
+ - For Hyper-V Replica, the script uses a template name of 'Hyper-V Replica' by default. In theory, the template name check can be deleted, since there is currently no support for configuring the certificate for the 'first time'.
  - For Network Device Enrollment Service, the default template names for the 'CEPEncryption' and 'EnrollmentAgentOffline' V1 certificate templates are supported - but you can also set up custom names using V2 certificates if you replaced the defaults e.g. by following https://www.microsoft.com/en-us/download/details.aspx?id=46406
 If you are using Active Directory Certificate Services, ensure you update the scripts with the certificate template names you are using.
 
