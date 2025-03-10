@@ -9,7 +9,7 @@ Param(
     [Int32]$EventRecordId
 )
 
-if ($null -eq $OldCertHash) { $OldCertHash = '' } # Allow missing OldCertHash to be passed to trigger configuring a new certificate (only works on Microsoft SQL Server Database Engine instances)
+if ($null -eq $OldCertHash) { $OldCertHash = '' } # Allow missing OldCertHash to be passed to trigger configuring a new certificate (only works on Microsoft SQL Server)
 
 $NewCertificate = Get-Item -Path Cert:\LocalMachine\My\$NewCertHash
 
@@ -24,7 +24,7 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
             $SQLServerInstanceName = $SQLServerRegKey.GetValue($null) # SQL Server registry key default value is instance name
             $SQLServiceName = @('MSSQLSERVER', $("MSSQL`$$SQLServerInstanceName"))[!($SQLServerInstanceName -eq 'MSSQLSERVER')]
             $SQLServiceObject = Get-CimInstance -ClassName Win32_Service -Filter "Name='$SQLServiceName'" -Property StartName
-    
+
             # Set permissions on the private key for certificate - based on https://blog.wicktech.net/update-sql-ssl-certs/
             Write-Output "Setting ACL on SQL Server Certificate Thumbprint '$NewCertHash' for SQL Server instance '$SQLServerInstanceName' running as '$($SQLServiceObject.StartName)'..."
             $NewCertificatePrivateKeyPath = "$env:ALLUSERSPROFILE\Microsoft\Crypto\RSA\MachineKeys\$($NewCertificate.PrivateKey.CspKeyContainerInfo.UniqueKeyContainerName)"
@@ -32,24 +32,25 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
             $NewCertificatePrivateKeyAccessRule = New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList $SQLServiceObject.StartName, 'Read', 'Allow'
             $NewCertificatePrivateKeyAcl.AddAccessRule($NewCertificatePrivateKeyAccessRule)
             Set-Acl -Path $NewCertificatePrivateKeyPath -AclObject $NewCertificatePrivateKeyAcl
-    
+
             # Update the certificate thumbprint with this certificate on this SQL Server and restart - for SQL Server 2019, must be in lower case https://stackoverflow.com/a/74285913
             Write-Output "Updating Certificate Thumbprint for SQL Server instance '$SQLServerInstanceName' to '$($NewCertHash.ToLower())'..."
             $SuperSocketNetLibKey | Set-ItemProperty -Name "Certificate" -Value $NewCertHash.ToLower()
-    
+
             # Restart the SQL Server instance
             Write-Output "Restarting SQL Server instance '$SQLServerInstanceName'..."
             Restart-Service -Name $SQLServiceName -Force -WarningAction:SilentlyContinue # Suppress 'Waiting for service to start' warnings
         }
     }
 }
+
 # If there is an old certificate to renew, or the new certificate template information shows it is an Internal Web Server certificate - prevent the incorrect certificate template from being selected when passing NewCertHash only
 if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=Internal Web Server\(" })) {
     # If there is an instance of the SQL Server Reporting Services service installed
     if (Test-Path -Path "HKLM:\SYSTEM\CurrentControlSet\Services\SQLServerReportingServices" -PathType Container) {
         # Get this device's Windows system locale for use with SQL Server Reporting Services WMI methods
         $SystemLocale = Get-WinSystemLocale
-    
+
         # Look for any SQL Server Reporting Services instances using the old certificate thumbprint - based on https://community.certifytheweb.com/t/sql-server-reporting-services-ssrs/332
         # Also based on https://learn.microsoft.com/en-us/answers/questions/924375/ssrs-pbi-report-server-still-linked-to-old-certifi
         foreach ($SQLServerRSInstance in Get-CimInstance -Namespace root\Microsoft\SqlServer\ReportServer -ClassName __Namespace) {
@@ -73,7 +74,7 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
                     }
                 }
             }
-    
+
             # If either reporting services application has no certificate configured, or is using the old certificate thumbprint, first delete then recreate
             if ($SQLServerRSSSLCertificateBindings.CertificateHash[$SQLServerRSSSLCertificateBindings.Application.IndexOf('ReportServerWebService')] -eq $OldCertHash -or $SQLServerRSSSLCertificateBindings.CertificateHash[$SQLServerRSSSLCertificateBindings.Application.IndexOf('ReportServerWebApp')] -eq $OldCertHash) {
                 # Delete the bindings for the Web Portal URL (ReportServerWebApp) first, then delete the bindings for the Web Service URL (ReportServerWebService) second
@@ -90,7 +91,7 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
                     }
                     # Remove any existing SSL certificate bindings for this application
                     for ($i = 0; $i -lt $SQLServerRSSSLCertificateBindings.Application.Count; $i++) {
-                            if ($SQLServerRSSSLCertificateBindings.Application[$i] -eq $SQLServerRSApplication -and $SQLServerRSSSLCertificateBindings.CertificateHash[$i] -eq $OldCertHash -and $SQLServerRSSSLCertificateBindings.CertificateHash[$i] -ne '') { # Include check for dummy data added just to configure a new certificate
+                        if ($SQLServerRSSSLCertificateBindings.Application[$i] -eq $SQLServerRSApplication -and $SQLServerRSSSLCertificateBindings.CertificateHash[$i] -eq $OldCertHash -and $SQLServerRSSSLCertificateBindings.CertificateHash[$i] -ne '') { # Include check for dummy data added just to configure a new certificate
                             Write-Output "Removing SSL Certificate Binding for SQL Server Reporting Services '$SQLServerRSApplication' with IP Address '$($SQLServerRSSSLCertificateBindings.IPAddress[$i])' and port '$($SQLServerRSSSLCertificateBindings.Port[$i])': $($SQLServerRSSSLCertificateBindings.CertificateHash[$i]).."
                             $SQLRemoveWMIMethodResult = $SQLServerRSConfigurationSetting | Invoke-CimMethod -MethodName RemoveSSLCertificateBindings -Arguments @{Application=$SQLServerRSApplication;CertificateHash=$SQLServerRSSSLCertificateBindings.CertificateHash[$i];IPAddress=$SQLServerRSSSLCertificateBindings.IPAddress[$i];Port=$SQLServerRSSSLCertificateBindings.Port[$i];Lcid=$SystemLocale.LCID}
                             if ($SQLRemoveWMIMethodResult.HRESULT -ne 0) {
@@ -137,20 +138,34 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
         }
     }
 }
+# If the new certificate template information shows it is an Hyper-V Replica certificate
+if ($NewCertificate.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=Hyper-V Replica\(" }) {
+    # If there is an instance of the Hyper-V role installed
+    if (Test-Path -Path "$env:SystemRoot\System32\vmms.exe" -PathType Leaf) {
+        # Get the Hyper-V replication server settings
+        $HyperVReplicationServer = Get-VMReplicationServer
+        # If the Hyper-V replication server is using the old certificate thumbprint
+        if ($HyperVReplicationServer.CertificateThumbprint -eq $OldCertHash) {
+            Write-Output "Updating Certificate Thumbprint for Hyper-V Replication Server to '$NewCertHash'..."
+            Set-VMReplicationServer -AllowedAuthenticationType $HyperVReplicationServer.AllowedAuthenticationType -CertificateThumbprint $NewCertHash
+        }
+    }
+}
+
 # If the new certificate template information shows it is a CEP Encryption or Exchange Enrollment Agent (Offline request) V1 certificate, or is a custom V2 certificate template name - based on https://www.microsoft.com/en-us/download/details.aspx?id=46406
 if ($NewCertificate.Extensions | Where-Object { ($_.Oid.Value -eq '1.3.6.1.4.1.311.20.2' -and $_.Format(0) -eq "CEPEncryption") -or `
     ($_.Oid.Value -eq '1.3.6.1.4.1.311.20.2' -and $_.Format(0) -eq "EnrollmentAgentOffline") -or `
     ($_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=NDES CEP Encryption\(") -or `
     ($_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=NDES Exchange Enrollment Agent \(Offline Request\)\(") }) {
-    # If there is an instance of Network Device Enrollment Services installed
+    # If there is an instance of the Network Device Enrollment Services installed
     if (Test-Path -Path "$env:SystemRoot\System32\certsrv\mscep\mscep.dll" -PathType Leaf) {
         $NDESIISAppPoolName = 'SCEP' # The NDES service installs an IIS Application Pool is called 'SCEP' by default
         # Refresh IISAdministration view of the IIS Server Manager - refreshes worker process data
         Reset-IISServerManager -Confirm:$false
         # If there is a running NDES IIS Worker Process
-        if ((Get-IISAppPool -Name $NDESIISAppPoolName).WorkerProcesses) {
+        if ($NDESIISAppPoolWorkerProcess = (Get-IISAppPool -Name $NDESIISAppPoolName).WorkerProcesses) {
             # If the worker process start time is before the certificate was issued - taking ClockSkewMinutes default value (10 minutes) into account for ADCS
-            if ((Get-Process -Id ((Get-IISAppPool -Name $NDESIISAppPoolName).WorkerProcesses).ProcessId).StartTime -lt $NewCertificate.NotBefore.AddMinutes(10)) {
+            if ((Get-Process -Id $NDESIISAppPoolWorkerProcess.ProcessId).StartTime -lt $NewCertificate.NotBefore.AddMinutes(10)) {
                 Write-Output "Restarting Network Device Enrollment Services IIS Worker Process '$NDESIISAppPoolName'..."
                 Restart-WebAppPool -Name $NDESIISAppPoolName
             }
