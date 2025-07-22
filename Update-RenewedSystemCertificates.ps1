@@ -138,6 +138,25 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
         }
     }
 }
+
+# If the new certificate template information shows it is an Hyper-V certificate
+if ($NewCertificate.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=Hyper-V\(" }) {
+    # If there is an instance of the Hyper-V role installed
+    if (Test-Path -Path "$env:SystemRoot\System32\vmms.exe" -PathType Leaf) {
+        $VMMSServiceName = 'vmms' # Hyper-V Virtual Machine Management service name
+        # Get the Hyper-V Virtual Machine Management service state and process ID
+        $VMMSServiceObject = Get-CimInstance -ClassName Win32_Service -Filter "Name='$VMMSServiceName'" -Property State, ProcessId
+        # If the Hyper-V Virtual Machine Management service is running
+        if ($VMMSServiceObject.State -eq 'Running') {
+            # If the Hyper-V Virtual Machine Management service start time is before the certificate was issued - taking ClockSkewMinutes default value (10 minutes) into account for ADCS
+            if ((Get-Process -Id $VMMSServiceObject.ProcessId).StartTime -lt $NewCertificate.NotBefore.AddMinutes(10)) {
+                Write-Output "Restarting Hyper-V Virtual Machine Management Service '$VMMSServiceName'..."
+                Restart-Service -Name $VMMSServiceName -Force -WarningAction:SilentlyContinue # Suppress 'Waiting for service to start' warnings
+            }
+        }
+    }
+}
+
 # If the new certificate template information shows it is an Hyper-V Replica certificate
 if ($NewCertificate.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=Hyper-V Replica\(" }) {
     # If there is an instance of the Hyper-V role installed
