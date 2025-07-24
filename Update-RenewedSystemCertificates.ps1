@@ -182,9 +182,9 @@ if ($NewCertificate.Extensions | Where-Object { ($_.Oid.Value -eq '1.3.6.1.4.1.3
         # Refresh IISAdministration view of the IIS Server Manager - refreshes worker process data
         Reset-IISServerManager -Confirm:$false
         # If there is a running NDES IIS Worker Process
-        if ($NDESIISAppPoolWorkerProcess = (Get-IISAppPool -Name $NDESIISAppPoolName).WorkerProcesses) {
+        if ($NDESIISAppPoolWorkerProcessId = (Get-IISAppPool -Name $NDESIISAppPoolName).WorkerProcesses.ProcessId) {
             # If the worker process start time is before the certificate was issued - taking ClockSkewMinutes default value (10 minutes) into account for ADCS
-            if ((Get-Process -Id $NDESIISAppPoolWorkerProcess.ProcessId).StartTime -lt $NewCertificate.NotBefore.AddMinutes(10)) {
+            if ((Get-Process -Id $NDESIISAppPoolWorkerProcessId).StartTime -lt $NewCertificate.NotBefore.AddMinutes(10)) {
                 Write-Output "Restarting Network Device Enrollment Services IIS Worker Process '$NDESIISAppPoolName'..."
                 Restart-WebAppPool -Name $NDESIISAppPoolName
             }
