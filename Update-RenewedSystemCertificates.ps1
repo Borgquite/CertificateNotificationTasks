@@ -9,7 +9,7 @@ Param(
     [Int32]$EventRecordId
 )
 
-if ($null -eq $OldCertHash) { $OldCertHash = '' } # Allow missing OldCertHash to be passed to trigger configuring a new certificate (only works on Microsoft SQL Server)
+if ($null -eq $OldCertHash) { $OldCertHash = '' } # Allow missing OldCertHash to be passed to trigger configuring a new certificate (only works on Microsoft SQL Server Database Engine and Reporting Services)
 
 $NewCertificate = Get-Item -Path Cert:\LocalMachine\My\$NewCertHash
 
@@ -136,6 +136,16 @@ if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.
                 Restart-Service -Name 'SQLServerReportingServices' -Force -WarningAction:SilentlyContinue # Suppress 'Waiting for service to start' warnings
             }
         }
+    }
+}
+
+# If the new certificate template information shows it is a WinRM certificate
+if ($NewCertificate.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=WinRM\(" }) {
+    # Look for any WinRM listeners with the old certificate thumbprint
+    foreach ($WinRMListener in Get-WSManInstance -ResourceURI winrm/config/listener -Enumerate | Where-Object { $_.CertificateThumbprint -eq $OldCertHash }) {
+        # Update new WinRM listener with the new certificate thumbprint
+        Write-Output "Updating certificate thumbprint for WinRM listener with address '$($WinRMListener.Address)' and transport '$($WinRMListener.Transport)' to '$NewCertHash'..."
+        Set-WSManInstance -ResourceURI winrm/config/listener -SelectorSet @{ Address = $WinRMListener.Address; Transport = $WinRMListener.Transport } -ValueSet @{ CertificateThumbprint = $NewCertHash } | Out-Null
     }
 }
 
