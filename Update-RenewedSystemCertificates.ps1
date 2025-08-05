@@ -149,6 +149,33 @@ if ($NewCertificate.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.31
     }
 }
 
+# If the new certificate template information shows it is a WMSvc certificate
+if ($NewCertificate.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=WMSvc\(" }) {
+    # If there is an instance of the Web Management Service (WMSvc) role installed
+    if (Test-Path -Path "$env:SystemRoot\System32\inetsrv\WMSvc.exe" -PathType Leaf) {
+        $WMSvcRegistryPath = 'HKLM:\SOFTWARE\Microsoft\WebManagement\Server' # WMSvc service configuration registry path
+        # Get the current certificate hash, and the old certificate hash in the byte array format - based on https://web.archive.org/web/20210925014006/https://forums.iis.net/t/1238001.aspx
+        $SslCertificateHash = (Get-ItemProperty -Path $WMSvcRegistryPath).SslCertificateHash
+        $OldCertHashByteArray = for($i = 0; $i -lt $OldCertHash.Length; $i += 2) { [convert]::ToByte($OldCertHash.SubString($i, 2), 16) }
+        # If both certificate hashes in byte array format exist, and the current certificate hash in byte array format matches the old certificate hash in byte array format
+        if ($null -ne $SslCertificateHash -and $null -ne $OldCertHashByteArray -and !(Compare-Object -ReferenceObject $SslCertificateHash -DifferenceObject $OldCertHashByteArray -SyncWindow 0)) {
+            $WMSvcSslBinding = '0.0.0.0:8172' # Default WMSvc SSL binding
+            $WMSvcServiceName = 'WMSvc' # Web Management Service service name
+            Write-Output "Removing WMSvc SSL certificate binding '$WMSvcSslBinding'..."
+            & $env:SystemRoot\System32\netsh.exe http delete sslcert ipport="$WMSvcSslBinding" | Out-Null
+            Write-Output "Adding WMSvc HTTP SSL certificate binding '$WMSvcSslBinding' with new certificate thumbprint '$NewCertHash'..."
+            & $env:SystemRoot\System32\netsh.exe http add sslcert ipport="$WMSvcSslBinding" certhash="$NewCertHash" appid="{d7d72267-fcf9-4424-9eec-7e1d8dcec9a9}" certstorename="MY" | Out-Null
+            Write-Output "Updating WMSvc registry SSL certificate hash to '$NewCertHash'..."
+            # Get the new certificate hash in the byte array format and write to the registry
+            $NewCertHashByteArray = for($i = 0; $i -lt $NewCertHash.Length; $i += 2) { [convert]::ToByte($NewCertHash.SubString($i, 2), 16) }
+            Set-ItemProperty -Path $WMSvcRegistryPath -Name 'SslCertificateHash' -Value $NewCertHashByteArray -Type Binary
+            # Restart the Web Management Service
+            Write-Output "Restarting Web Management Service '$WMSvcServiceName'..."
+            Restart-Service -Name $WMSvcServiceName -Force -WarningAction:SilentlyContinue # Suppress 'Waiting for service to start' warnings
+        }
+    }
+}
+
 # If the new certificate template information shows it is an Hyper-V certificate
 if ($NewCertificate.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=Hyper-V\(" }) {
     # If there is an instance of the Hyper-V role installed
