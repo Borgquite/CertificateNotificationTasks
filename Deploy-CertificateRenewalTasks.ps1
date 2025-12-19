@@ -6,6 +6,7 @@ $CertificateNotificationTaskName = "Internal-SystemCertificateRenewalTask"
 $NotificationScriptFile = "Update-RenewedSystemCertificates.ps1"
 $ScriptDestinationPath = "$env:SystemDrive\#PowerShell"
 
+$NPSServerCertificates = Get-ChildItem Cert:\LocalMachine\My\ | Where-Object { $_.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=RAS and IAS Server\(" } }
 $SQLServerCertificates = Get-ChildItem Cert:\LocalMachine\My\ | Where-Object { $_.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=SQL Server\(" } }
 $WinRMCertificates = Get-ChildItem Cert:\LocalMachine\My\ | Where-Object { $_.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=WinRM\(" } }
 $WMSvcCertificates = Get-ChildItem Cert:\LocalMachine\My\ | Where-Object { $_.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=WMSvc\(" } }
@@ -16,7 +17,7 @@ $NDESServerCertificates = Get-ChildItem Cert:\LocalMachine\My\ | Where-Object { 
     ($_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=NDES CEP Encryption\(") -or `
     ($_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=NDES Exchange Enrollment Agent \(Offline Request\)\(") } }
 
-if ($null -ne $SQLServerCertificates -or $null -ne $WinRMCertificates -or $null -ne $WMSvcCertificates -or $null -ne $HyperVCertificates -or $null -ne $HyperVReplicaCertificates -or $null -ne $NDESServerCertificates) {
+if ($null -ne $NPSServerCertificates -or $null -ne $SQLServerCertificates -or $null -ne $WinRMCertificates -or $null -ne $WMSvcCertificates -or $null -ne $HyperVCertificates -or $null -ne $HyperVReplicaCertificates -or $null -ne $NDESServerCertificates) {
     if (-not (Test-Path -Path $ScriptDestinationPath -PathType Container)) { # Create the destination directory if it does not already exist
         New-Item $ScriptDestinationPath -Type Directory | Out-Null
     }
