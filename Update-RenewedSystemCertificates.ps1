@@ -13,6 +13,66 @@ if ($null -eq $OldCertHash) { $OldCertHash = '' } # Allow missing OldCertHash to
 
 $NewCertificate = Get-Item -Path Cert:\LocalMachine\My\$NewCertHash
 
+# If the new certificate template information shows it is a RAS and IAS Server certificate
+if ($NewCertificate.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=RAS and IAS Server\(" }) {
+    # Define NPS (IAS) configuration XML path
+    $IASConfigPath = "$env:SystemRoot\System32\ias\ias.xml"
+
+    # If there is an instance of the Network Policy Server role installed
+    if (Test-Path -Path $IASConfigPath -PathType Leaf) {
+        # Open the NPS configuration file
+        $IASConfig = New-Object -TypeName System.Xml.XmlDocument
+        $IASConfig.PreserveWhitespace = $true
+        $IASConfig.Load($IASConfigPath)
+
+        # These are the XML paths to look for msEAPConfiguration elements
+        $msEAPXPaths = @(
+            '//RadiusProfiles/Children/*[descendant::msEAPConfiguration]'
+            '//Proxy_Profiles/Children/*[descendant::msEAPConfiguration]'
+        )
+
+        # Go through each XML path containing msEAPConfiguration elements
+        $RestartNPSFlag = $false
+        foreach ($msEAPXPath in $msEAPXPaths) {
+            # Go through each NPS profile which contains an msEAPConfiguration element
+            foreach ($msEAPProfile in $IASConfig.SelectNodes($msEAPXPath)) {
+                # Go through each msEAPConfiguration element in this profile
+                foreach ($msEAPConfiguration in $msEAPProfile.Properties.msEAPConfiguration) {
+                    # Determine the EAP type and the thumbprint offset based on starting bytes of the msEAPConfiguration element
+                    switch ($msEAPConfiguration.InnerText.Substring(0,32)) {
+                        '0d000000000000000000000000000000' {
+                            $eapType = 'Microsoft: Smart Card or other certificate'
+                            $thumbprintOffset = 80
+                        }
+                        '19000000000000000000000000000000' {
+                            $eapType = 'Microsoft: Protected EAP (PEAP)'
+                            $thumbprintOffset = 72
+                        }
+                        default {
+                            Write-Warning "Unknown EAP type: $($msEAPConfiguration.InnerText.Substring(0,32))"
+                            continue
+                        }
+                    }
+                    $currentThumbprint = $msEAPConfiguration.InnerText.Substring($thumbprintOffset,40)
+                    if ($currentThumbprint -eq $OldCertHash) {
+                        Write-Output "Updating EAP Profile '$($msEAPProfile.name)' with type '$eapType' to '$($NewCertHash.ToLower())'..."
+                        # msEAPConfigurations of the type 'Microsoft: Protected EAP (PEAP)' may contain the thumbprint in two locations, so replace all occurrences
+                        $msEAPConfiguration.InnerText = $msEAPConfiguration.InnerText.Replace($currentThumbprint, $NewCertHash.ToLower())
+                        $RestartNPSFlag = $true
+                    }
+                }
+            }
+        }
+        if ($RestartNPSFlag) {
+            Write-Output "Saving updated NPS configuration file to path: '$IASConfigPath'..."
+            $IASConfig.Save($IASConfigPath)
+
+            Write-Output "Restarting Network Policy Server service to apply updated configuration..." -Verbose
+            Restart-Service -Name 'IAS' -Force -WarningAction:SilentlyContinue # Suppress 'Waiting for service to start' warnings
+        }
+    }
+}
+
 # If there is an old certificate to renew, or the new certificate template information shows it is an SQL Server certificate - prevent the incorrect certificate template from being selected when passing NewCertHash only
 if ($OldCertHash -ne '' -or ($NewCertificate.Extensions | Where-Object { $_.Oid.Value -eq '1.3.6.1.4.1.311.21.7' -and $_.Format(0) -match "^Template=SQL Server\(" })) {
     # If there is an instance of the Microsoft SQL Server registry key
